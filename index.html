@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Augmium | AR Diwali Greeting</title>
+  <script src="https://aframe.io/releases/1.5.0/aframe.min.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js" crossorigin="anonymous"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', function () {
+      var sound = document.getElementById('fireworksSound');
+      var muteBtn = document.getElementById('muteToggle');
+      var targetEl = document.querySelector('[mindar-image-target]');
+      var userMuted = false;
+      var unlocked = false;
+
+      function unlockAudio() {
+        if (unlocked) return;
+        unlocked = true;
+        sound.muted = true;
+        sound.play().then(function () {
+          sound.pause();
+          sound.currentTime = 0;
+        }).catch(function () {});
+      }
+
+      document.body.addEventListener('touchstart', unlockAudio, {once: true});
+      document.body.addEventListener('click', unlockAudio, {once: true});
+
+      // Manual loop, independent of the unreliable native `loop` attribute
+      sound.addEventListener('ended', function () {
+        sound.currentTime = 0;
+        sound.play().catch(function (err) {
+          console.warn('Loop restart blocked:', err);
+        });
+      });
+
+      targetEl.addEventListener('targetFound', function () {
+        sound.muted = userMuted;
+        if (sound.paused) {
+          sound.play().catch(function (err) {
+            console.warn('Audio blocked until user interacts:', err);
+          });
+        }
+      });
+
+      targetEl.addEventListener('targetLost', function () {
+        sound.pause();
+      });
+
+      muteBtn.addEventListener('click', function (e) {
+        e.stopPropagation(); // keep this click from also triggering the body-level unlock routine
+        userMuted = !userMuted;
+        sound.muted = userMuted;
+        muteBtn.textContent = userMuted ? '🔇' : '🔊';
+        if (!userMuted && sound.paused) {
+          sound.play().catch(function (err) {
+            console.warn('Resume on unmute blocked:', err);
+          });
+        }
+      });
+    });
+  </script>
+  
+  <script>
+    AFRAME.registerComponent('firework-particles', {
+      schema: {
+        burstSlots: {default: 4},
+        sparksPerBurst: {default: 10},
+        spreadX: {default: 0.4},
+        spreadY: {default: 0.4}
+      },
+      init: function () {
+        var el = this.el;
+        var colors = ['#7877FA', '#D3FF72', '#F55B64'];
+        var data = this.data;
+
+        var glowTexture = 'data:image/svg+xml;utf8,' + encodeURIComponent(
+          '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64">' +
+          '<defs><radialGradient id="g" cx="50%" cy="50%" r="50%">' +
+          '<stop offset="0%" stop-color="white" stop-opacity="1"/>' +
+          '<stop offset="60%" stop-color="white" stop-opacity="0.5"/>' +
+          '<stop offset="100%" stop-color="white" stop-opacity="0"/>' +
+          '</radialGradient></defs>' +
+          '<rect width="64" height="64" fill="url(#g)"/></svg>'
+        );
+
+        function spawnBurst() {
+          var color = colors[Math.floor(Math.random() * colors.length)];
+          var cx = (Math.random() * 2 - 1) * data.spreadX;
+          var cy = (Math.random() * 2 - 1) * data.spreadY;
+
+          var flash = document.createElement('a-circle');
+          flash.setAttribute('radius', 0.02);
+          flash.setAttribute('color', '#ffffff');
+          flash.setAttribute('material', {
+            shader: 'flat', src: glowTexture,
+            transparent: true, opacity: 1, blending: 'additive'
+          });
+          flash.setAttribute('position', cx + ' ' + cy + ' 0.001');
+          flash.setAttribute('animation__scale', {
+            property: 'scale', from: '0.3 0.3 0.3', to: '2.5 2.5 2.5',
+            dur: 220, easing: 'easeOutQuad'
+          });
+          flash.setAttribute('animation__fade', {
+            property: 'material.opacity', from: 1, to: 0,
+            dur: 260, easing: 'easeInQuad'
+          });
+          el.appendChild(flash);
+          setTimeout(function () { el.removeChild(flash); }, 300);
+
+          for (var i = 0; i < data.sparksPerBurst; i++) {
+            var angle = (i / data.sparksPerBurst) * Math.PI * 2 + (Math.random() * 0.3);
+            var dist = 0.12 + Math.random() * 0.08;
+            var endX = cx + Math.cos(angle) * dist;
+            var endY = cy + Math.sin(angle) * dist;
+            var dur = 500 + Math.random() * 300;
+
+            var spark = document.createElement('a-plane');
+            spark.setAttribute('width', 0.009);
+            spark.setAttribute('height', 0.09);
+            spark.setAttribute('color', color);
+            spark.setAttribute('material', {
+              shader: 'flat', src: glowTexture,
+              transparent: true, opacity: 1, blending: 'additive'
+            });
+            spark.setAttribute('position', cx + ' ' + cy + ' 0');
+            spark.setAttribute('rotation', '0 0 ' + (angle * 180 / Math.PI - 90));
+
+            spark.setAttribute('animation__move', {
+              property: 'position', to: endX + ' ' + endY + ' 0',
+              dur: dur, easing: 'easeOutQuad'
+            });
+            spark.setAttribute('animation__fade', {
+              property: 'material.opacity', from: 1, to: 0,
+              dur: dur, easing: 'easeInQuad'
+            });
+
+            el.appendChild(spark);
+            (function (sparkEl, duration) {
+              setTimeout(function () { el.removeChild(sparkEl); }, duration + 50);
+            })(spark, dur);
+          }
+        }
+
+        for (var s = 0; s < data.burstSlots; s++) {
+          var initialDelay = Math.random() * 1500;
+          setTimeout(function loopBurst() {
+            spawnBurst();
+            setTimeout(loopBurst, 1200 + Math.random() * 1300);
+          }, initialDelay);
+        }
+      }
+    });
+  </script>
+
+  <script>
+    AFRAME.registerComponent('fit-image-aspect', {
+      schema: {height: {default: 1}},
+      init: function () {
+        var el = this.el;
+        var targetHeight = this.data.height;
+        el.addEventListener('materialtextureloaded', function (evt) {
+          var img = evt.detail.texture.image;
+          if (img && img.naturalWidth && img.naturalHeight) {
+            var ratio = img.naturalWidth / img.naturalHeight;
+            el.setAttribute('geometry', 'primitive: plane; width: ' + (targetHeight * ratio) + '; height: ' + targetHeight);
+          }
+        });
+      }
+    });
+  </script>
+
+  <style>
+    body { margin: 0; overflow: hidden; font-family: sans-serif; }
+    .overlay {
+      position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+      width: max-content; max-width: calc(100vw - 32px); box-sizing: border-box;
+      color: #fff; background: rgba(0,0,0,0.55); padding: 10px 14px;
+      border-radius: 8px; font-size: 13px; z-index: 999; text-align: center;
+    }
+    .sound-toggle {
+      position: fixed; top: 16px; right: 16px;
+      width: 44px; height: 44px; border-radius: 50%;
+      border: none; background: rgba(0,0,0,0.55); color: #fff;
+      font-size: 20px; z-index: 999; cursor: pointer;
+    }
+    .a-enter-vr, .a-enter-ar {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <div class="overlay">Point your camera at the target image.</div>
+
+  <audio id="fireworksSound" src="./assets/fireworks.mp3" loop preload="auto"></audio>
+  <button id="muteToggle" class="sound-toggle" aria-label="Mute sound">🔊</button>
+
+  <a-scene
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: true; uiScanning: yes; uiLoading: yes; filterMinCF: 0.001; filterBeta: 0.01; missTolerance: 10; warmupTolerance: 5;"
+    color-space="sRGB"
+    renderer="colorManagement: true, physicallyCorrectLights: true, exposure: 1.5"
+    vr-mode-ui="enabled: false"
+    xr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: true"
+    light="defaultLightsEnabled: false"
+  >
+    <a-assets>
+      <a-asset-item id="augmiumModel" src="./assets/model.glb"></a-asset-item>
+      <img id="chakriImg" src="./assets/chakri.png" crossorigin="anonymous">
+      <img id="diwaliWishImg" src="./assets/diwali-wish.png" crossorigin="anonymous">
+      <img id="skyBgImg" src="./assets/sky-bg.png" crossorigin="anonymous"> 
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <a-entity mindar-image-target="targetIndex: 0">
+
+      <!-- Sky backdrop, behind everything -->
+      <a-image
+      src="#skyBgImg"
+      position="0 0.2 -1"
+      rotation="0 0 0"
+      fit-image-aspect="height: 1.9"
+      material="shader: flat; transparent: true"
+      ></a-image>
+
+      <a-gltf-model src="#augmiumModel" position="0 -0.5 0" rotation="0 0 0" scale="8 8 8"></a-gltf-model>
+
+      <!-- Spinning chakri, flat on the ground, in front of the characters -->
+      <a-image
+        src="#chakriImg"
+        position="-0.17 -0.395 0.3"
+        rotation="0 0 0"
+        scale="0.15 0.15 0.15"
+        material="shader: flat; transparent: true"
+        animation="property: rotation; from: -90 0 0; to: -90 0 -360; loop: true; dur: 200; easing: linear"
+      ></a-image>
+
+      <!-- Firework particle burst, positioned just behind the wish image -->
+      <a-entity
+        firework-particles
+        position="0 0.5 -1"
+        rotation="0 0 0"
+      ></a-entity>
+
+      <!-- "Happy Diwali" wish graphic, floating above the model -->
+      <a-image
+        src="#diwaliWishImg"
+        position="0 0.6 -0.5"
+        rotation="0 0 0"
+        fit-image-aspect="height: 0.6"
+        material="shader: flat; transparent: true"
+      ></a-image>
+
+    </a-entity>
+  </a-scene>
+</body>
+</html>
